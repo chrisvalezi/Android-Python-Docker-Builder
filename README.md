@@ -1,5 +1,7 @@
 # Android Python Docker Builder
 
+[English documentation](./README.en.md)
+
 Projeto reprodutível para compilar e empacotar `CPython` para rodar no shell puro do Android, com foco em `Android x86_64` dentro de `Redroid`, sem `Termux`, sem `APK` e sem `Gradle`.
 
 ## Objetivo
@@ -139,6 +141,8 @@ Depois do build, você terá algo como:
 - `output/dist/python-android-x86_64-slim.tar.gz`
 - `output/dist/SHA256SUMS`
 - `output/dist/ARTIFACTS.txt`
+
+Observação: o projeto usa `output/` como diretório oficial de saída. Não existe uma pasta `out/` neste repositório.
 
 ## Variantes
 
