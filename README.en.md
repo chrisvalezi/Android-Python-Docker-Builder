@@ -28,6 +28,11 @@ Reproducible Docker-based cross-build environment for running CPython in the pla
   - `armeabi-v7a`
   - `x86`
 
+The GitHub release workflow currently publishes prebuilt assets for:
+
+- `x86_64`
+- `arm64-v8a`
+
 The runtime uses shell launchers to set:
 
 - `PYTHONHOME`
@@ -304,6 +309,33 @@ For `pip` after an ADB deploy:
 adb shell '/data/local/tmp/python3/bin/python3 -m ensurepip --upgrade'
 adb shell '/data/local/tmp/python3/bin/python3 -m pip --version'
 ```
+
+## Where users download prebuilt binaries
+
+End users should download prebuilt runtimes from the GitHub `Releases` page.
+
+Current CI behavior:
+
+- pushes to `main` run the build workflow and upload temporary workflow artifacts
+- pushes of tags matching `android-python-py*` create a GitHub Release and attach the prebuilt assets
+
+To publish a release with downloadable prebuilt binaries:
+
+```bash
+git tag android-python-py3.12.12-r1
+git push origin android-python-py3.12.12-r1
+```
+
+That release will publish assets for:
+
+- `python-android-x86_64-full.tar.gz`
+- `python-android-x86_64-minimal.tar.gz`
+- `python-android-x86_64-slim.tar.gz`
+- `python-android-arm64-v8a-full.tar.gz`
+- `python-android-arm64-v8a-minimal.tar.gz`
+- `python-android-arm64-v8a-slim.tar.gz`
+- `SHA256SUMS`
+- `ARTIFACTS.txt`
 
 ## Test inside Redroid
 
