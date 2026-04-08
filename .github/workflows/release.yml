@@ -5,8 +5,11 @@ on:
     tags:
       - "android-python-py*"
 
+permissions:
+  contents: write
+
 jobs:
-  release:
+  build:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -30,10 +33,34 @@ jobs:
       - name: Build artifacts
         run: docker compose exec -T builder bash -lc "ANDROID_ABI=${{ matrix.abi }} ./scripts/build-all.sh"
 
-      - name: Publish release artifacts
-        uses: softprops/action-gh-release@v2
+      - name: Upload release staging artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: release-${{ matrix.abi }}
+          path: |
             output/dist/python-android-${{ matrix.abi }}-*.tar.gz
             output/dist/SHA256SUMS
             output/dist/ARTIFACTS.txt
+
+  publish:
+    runs-on: ubuntu-24.04
+    needs: build
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Show release payload
+        run: ls -lh release-artifacts
+
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/python-android-x86_64-*.tar.gz
+            release-artifacts/python-android-arm64-v8a-*.tar.gz
+            release-artifacts/SHA256SUMS
+            release-artifacts/ARTIFACTS.txt
