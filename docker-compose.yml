@@ -1,0 +1,14 @@
+services:
+  builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: android-python-builder
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      PYTHONUNBUFFERED: "1"
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    command: bash -lc "sleep infinity"

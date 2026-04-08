@@ -1,0 +1,45 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        abi:
+          - x86_64
+          - arm64-v8a
+          - armeabi-v7a
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build builder image
+        run: docker compose build builder
+
+      - name: Start builder container
+        run: docker compose up -d builder
+
+      - name: Build artifacts
+        run: docker compose exec -T builder bash -lc "ANDROID_ABI=${{ matrix.abi }} ./scripts/build-all.sh"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-android-${{ matrix.abi }}
+          path: |
+            output/dist/python-android-${{ matrix.abi }}-*.tar.gz
+            output/dist/SHA256SUMS
+            output/dist/ARTIFACTS.txt
+

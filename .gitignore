@@ -1,0 +1,7 @@
+output/*
+!output/.gitkeep
+
+.cache/
+.venv-hosttools/
+.env
+.DS_Store
