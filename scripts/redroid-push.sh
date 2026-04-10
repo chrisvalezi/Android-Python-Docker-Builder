@@ -6,17 +6,29 @@ source "${ROOT_DIR}/scripts/lib/common.sh"
 
 REDROID_CONTAINER="${REDROID_CONTAINER:-android-15}"
 RUNTIME_VARIANT="${RUNTIME_VARIANT:-minimal}"
-LOCAL_RUNTIME="${LOCAL_RUNTIME:-${ROOT_DIR}/output/runtime/${RUNTIME_VARIANT}}"
+LOCAL_RUNTIME="${LOCAL_RUNTIME:-}"
+LOCAL_TARBALL="${LOCAL_TARBALL:-${ROOT_DIR}/output/dist/python-android-${ANDROID_ABI}-${RUNTIME_VARIANT}.tar.gz}"
 REMOTE_RUNTIME="${REMOTE_RUNTIME:-/data/local/tmp/${ANDROID_ABI}/$(runtime_slug)}"
 INSTALL_SYSTEM_WRAPPER="${INSTALL_SYSTEM_WRAPPER:-1}"
 SYSTEM_BIN_PYTHON3="${SYSTEM_BIN_PYTHON3:-python3}"
 SYSTEM_BIN_PYTHON="${SYSTEM_BIN_PYTHON:-python}"
 SYSTEM_BIN_PIP="${SYSTEM_BIN_PIP:-pip}"
 
-if [[ ! -d "${LOCAL_RUNTIME}" ]]; then
-  printf 'Local runtime not found: %s\nRun the build first.\n' "${LOCAL_RUNTIME}" >&2
+TMP_RUNTIME=""
+if [[ -z "${LOCAL_RUNTIME}" ]]; then
+  if [[ ! -f "${LOCAL_TARBALL}" ]]; then
+    printf 'Local runtime tarball not found: %s\nRun the build first.\n' "${LOCAL_TARBALL}" >&2
+    exit 1
+  fi
+  TMP_RUNTIME="$(mktemp -d)"
+  tar -xzf "${LOCAL_TARBALL}" -C "${TMP_RUNTIME}"
+  LOCAL_RUNTIME="${TMP_RUNTIME}"
+elif [[ ! -d "${LOCAL_RUNTIME}" ]]; then
+  printf 'Local runtime not found: %s\n' "${LOCAL_RUNTIME}" >&2
   exit 1
 fi
+
+trap 'if [[ -n "${TMP_RUNTIME}" ]]; then rm -rf "${TMP_RUNTIME}"; fi' EXIT
 
 docker exec "${REDROID_CONTAINER}" sh -lc "rm -rf '${REMOTE_RUNTIME}' && mkdir -p '${REMOTE_RUNTIME}'"
 docker cp "${LOCAL_RUNTIME}/." "${REDROID_CONTAINER}:${REMOTE_RUNTIME}"

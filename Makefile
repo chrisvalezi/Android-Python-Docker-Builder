@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 SERVICE ?= builder
 ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-.PHONY: help compose-build compose-up compose-down shell build build-matrix deps package export redroid-push redroid-test redroid-pip clean distclean
+.PHONY: help compose-build compose-up compose-down shell build build-matrix deps package export native-wheels native-packages redroid-push redroid-test redroid-pip clean distclean
 
 help:
 	@printf '%s\n' \
@@ -17,6 +17,8 @@ help:
 	  '  make deps            # compila somente dependencias third-party' \
 	  '  make package         # reempacota artefatos a partir do staging atual' \
 	  '  make export          # recria checksums/manifests dos artefatos' \
+	  '  make native-wheels   # compila wheels Android de numpy/pandas' \
+	  '  make native-packages # instala wheels Android nativas no staging' \
 	  '  make redroid-push    # copia runtime minimal para o container Redroid' \
 	  '  make redroid-test    # executa smoke test no Redroid' \
 	  '  make redroid-pip     # habilita pip e testa instalacao de pacote pure-Python no Redroid' \
@@ -49,6 +51,12 @@ package:
 
 export:
 	$(COMPOSE) exec $(SERVICE) bash -lc "./scripts/export-artifacts.sh"
+
+native-wheels:
+	$(COMPOSE) exec $(SERVICE) bash -lc "./scripts/build-native-wheels.sh"
+
+native-packages:
+	$(COMPOSE) exec $(SERVICE) bash -lc "./scripts/install-runtime-native-packages.sh"
 
 redroid-push:
 	./scripts/redroid-push.sh

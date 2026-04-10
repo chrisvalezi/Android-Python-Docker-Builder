@@ -43,6 +43,40 @@ function derive_android_triple() {
   esac
 }
 
+function android_openssl_target() {
+  case "${ANDROID_ABI}" in
+    x86_64)
+      printf '%s\n' "android-x86_64"
+      ;;
+    arm64-v8a)
+      printf '%s\n' "android-arm64"
+      ;;
+    armeabi-v7a)
+      printf '%s\n' "android-arm"
+      ;;
+    x86)
+      printf '%s\n' "android-x86"
+      ;;
+  esac
+}
+
+function android_ndk_lib_arch() {
+  case "${ANDROID_ABI}" in
+    x86_64)
+      printf '%s\n' "x86_64-linux-android"
+      ;;
+    arm64-v8a)
+      printf '%s\n' "aarch64-linux-android"
+      ;;
+    armeabi-v7a)
+      printf '%s\n' "arm-linux-androideabi"
+      ;;
+    x86)
+      printf '%s\n' "i686-linux-android"
+      ;;
+  esac
+}
+
 if [[ -z "${ANDROID_TRIPLE}" ]]; then
   ANDROID_TRIPLE="$(derive_android_triple)"
 fi
@@ -71,6 +105,8 @@ BZIP2_SRC_DIR="${SOURCES_DIR}/bzip2-${BZIP2_VERSION}"
 XZ_SRC_DIR="${SOURCES_DIR}/xz-${XZ_VERSION}"
 LIBFFI_SRC_DIR="${SOURCES_DIR}/libffi-${LIBFFI_VERSION}"
 SQLITE_SRC_DIR="${SOURCES_DIR}/${SQLITE_AUTOCONF}"
+LIBXML2_SRC_DIR="${SOURCES_DIR}/libxml2-${LIBXML2_VERSION}"
+LIBXSLT_SRC_DIR="${SOURCES_DIR}/libxslt-${LIBXSLT_VERSION}"
 
 function log() {
   printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"
@@ -134,6 +170,8 @@ function fetch_sources() {
   download_if_missing "${XZ_URL}" "${DOWNLOADS_DIR}/xz-${XZ_VERSION}.tar.gz"
   download_if_missing "${LIBFFI_URL}" "${DOWNLOADS_DIR}/libffi-${LIBFFI_VERSION}.tar.gz"
   download_if_missing "${SQLITE_URL}" "${DOWNLOADS_DIR}/${SQLITE_AUTOCONF}.tar.gz"
+  download_if_missing "${LIBXML2_URL}" "${DOWNLOADS_DIR}/libxml2-${LIBXML2_VERSION}.tar.xz"
+  download_if_missing "${LIBXSLT_URL}" "${DOWNLOADS_DIR}/libxslt-${LIBXSLT_VERSION}.tar.xz"
 }
 
 function ensure_sources() {
@@ -146,6 +184,8 @@ function ensure_sources() {
   extract_if_missing "${DOWNLOADS_DIR}/xz-${XZ_VERSION}.tar.gz" "${XZ_SRC_DIR}" 1
   extract_if_missing "${DOWNLOADS_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_SRC_DIR}" 1
   extract_if_missing "${DOWNLOADS_DIR}/${SQLITE_AUTOCONF}.tar.gz" "${SQLITE_SRC_DIR}" 1
+  extract_if_missing "${DOWNLOADS_DIR}/libxml2-${LIBXML2_VERSION}.tar.xz" "${LIBXML2_SRC_DIR}" 1
+  extract_if_missing "${DOWNLOADS_DIR}/libxslt-${LIBXSLT_VERSION}.tar.xz" "${LIBXSLT_SRC_DIR}" 1
 }
 
 function ensure_ndk() {
@@ -207,6 +247,45 @@ EOF
 
 function python_xy() {
   printf '%s' "${PYTHON_VERSION%.*}"
+}
+
+function python_tag() {
+  local py_xy
+  py_xy="$(python_xy)"
+  printf 'cp%s%s' "${py_xy%%.*}" "${py_xy#*.}"
+}
+
+function android_wheel_platform_tag() {
+  if [[ -n "${ANDROID_WHEEL_PLATFORM_TAG}" ]]; then
+    printf '%s\n' "${ANDROID_WHEEL_PLATFORM_TAG}"
+    return
+  fi
+
+  local wheel_abi
+  case "${ANDROID_ABI}" in
+    x86_64)
+      wheel_abi="x86_64"
+      ;;
+    arm64-v8a)
+      wheel_abi="arm64_v8a"
+      ;;
+    armeabi-v7a)
+      wheel_abi="armeabi_v7a"
+      ;;
+    x86)
+      wheel_abi="x86"
+      ;;
+  esac
+
+  printf 'android_%s_%s\n' "${ANDROID_API}" "${wheel_abi}"
+}
+
+function android_wheelhouse_dir() {
+  if [[ -n "${ANDROID_WHEELHOUSE_DIR}" ]]; then
+    printf '%s\n' "${ANDROID_WHEELHOUSE_DIR}"
+  else
+    printf '%s\n' "${OUTPUT_DIR}/wheelhouse/${ANDROID_ABI}"
+  fi
 }
 
 function runtime_slug() {

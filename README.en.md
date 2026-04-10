@@ -115,12 +115,20 @@ make compose-up
 make build
 ```
 
+The full build also compiles the native Android wheels for `numpy`, `pandas`, `Pillow`, `lxml`, and `uiautomator2` before installing them into the runtime.
+
 ## Build a different ABI
 
 Example for `arm64-v8a`:
 
 ```bash
 docker compose exec builder bash -lc "ANDROID_ABI=arm64-v8a ./scripts/build-all.sh"
+```
+
+Equivalent shortcut:
+
+```bash
+ANDROID_ABI=arm64-v8a make build
 ```
 
 Build all configured ABIs serially:
@@ -149,6 +157,11 @@ The unpacked runtime trees are also available locally under:
 - `output/runtime/slim/`
 
 Note: this repository uses `output/` as the canonical build output directory. There is no `out/` directory in this project.
+
+Native `numpy`, `pandas`, `Pillow`, `lxml`, and `uiautomator2` wheels are written to:
+
+- `output/wheelhouse/x86_64/`
+- `output/wheelhouse/arm64-v8a/`
 
 ## Runtime variants
 
@@ -196,6 +209,11 @@ Bundled extra packages:
 - `faker`
 - `requests`
 - `jinja2`
+- `numpy`
+- `pandas`
+- `Pillow`
+- `lxml`
+- `uiautomator2`
 
 Their pure-Python dependencies are bundled as well:
 
@@ -204,6 +222,60 @@ Their pure-Python dependencies are bundled as well:
 - `idna`
 - `charset-normalizer`
 - `MarkupSafe`
+- `python-dateutil`
+- `pytz`
+- `tzdata`
+
+## Native packages: numpy, pandas, Pillow, lxml, and uiautomator2
+
+`numpy`, `pandas`, `Pillow`, and `lxml` contain native extensions. `uiautomator2` is pure Python, but it depends on native Android wheels such as `Pillow` and `lxml`, so it is installed through the native package flow as well.
+
+The default flow now builds these wheels inside the builder with `crossenv`, Meson, and the Android NDK:
+
+```bash
+make native-wheels
+make native-packages
+make package
+make export
+```
+
+The full build already runs this sequence through:
+
+```bash
+make build
+```
+
+Generated wheels are written to:
+
+```text
+output/wheelhouse/<abi>/
+```
+
+Example for `x86_64`:
+
+```text
+output/wheelhouse/x86_64/numpy-...-cp312-cp312-android_24_x86_64.whl
+output/wheelhouse/x86_64/pandas-...-cp312-cp312-android_24_x86_64.whl
+```
+
+Example for `arm64-v8a`:
+
+```text
+output/wheelhouse/arm64-v8a/numpy-...-cp312-cp312-android_24_arm64_v8a.whl
+output/wheelhouse/arm64-v8a/pandas-...-cp312-cp312-android_24_arm64_v8a.whl
+```
+
+You can override:
+
+- `ANDROID_WHEELHOUSE_DIR`: directory containing native wheels.
+- `ANDROID_WHEEL_PLATFORM_TAG`: platform tag passed to `pip`, for example `android_24_x86_64`.
+- `NUMPY_VERSION`: pinned `numpy` version.
+- `PANDAS_VERSION`: pinned `pandas` version.
+- `PILLOW_VERSION`: pinned `Pillow` version.
+- `LXML_VERSION`: pinned `lxml` version.
+- `UIAUTOMATOR2_VERSION`: pinned `uiautomator2` version.
+
+If you want to provide your own wheels instead of building them, place them in `output/wheelhouse/<abi>/` before running `make native-packages`.
 
 Each runtime also includes `BUNDLED-PACKAGES.txt` with the pinned versions that were installed into the final package.
 
@@ -233,6 +305,32 @@ The deploy step also installs global wrappers:
 - `/system/bin/python`
 - `/system/bin/pip`
 
+The deploy script extracts the ABI-specific tarball from:
+
+```text
+output/dist/python-android-<abi>-<variant>.tar.gz
+```
+
+It does not copy the generic `output/runtime/<variant>/` tree, so switching between `x86_64` and `arm64-v8a` does not deploy a stale runtime.
+
+After deployment:
+
+```bash
+docker exec android-15 sh -lc 'python3 --version'
+docker exec android-15 sh -lc 'python -c "import sys; print(sys.version)"'
+docker exec android-15 sh -lc 'python3 -c "import numpy, pandas, uiautomator2; from PIL import Image; from lxml import etree; print(numpy.__version__, pandas.__version__, Image.__version__)"'
+```
+
+Enable and test `pip` in Redroid:
+
+```bash
+REDROID_CONTAINER=android-15 ./scripts/redroid-enable-pip.sh
+docker exec android-15 sh -lc 'pip --version'
+docker exec android-15 sh -lc 'pip install urllib3'
+```
+
+For `arm64-v8a`, the Android or Redroid environment must be able to execute ARM64 native ELF binaries. Some x86_64 Redroid images advertise `arm64-v8a` in Android properties but cannot execute standalone ARM64 binaries.
+
 ## Use the prebuilt runtime directly in Redroid
 
 If you already have a generated runtime and only want to install it into a running Redroid container, you do not need to rebuild anything.
@@ -252,13 +350,24 @@ REDROID_CONTAINER=android-15 ANDROID_ABI=arm64-v8a ./scripts/redroid-push.sh
 Manual equivalent:
 
 ```bash
+docker cp ./output/dist/python-android-x86_64-minimal.tar.gz android-15:/data/local/tmp/python-android-x86_64-minimal.tar.gz
 docker exec android-15 sh -lc 'rm -rf /data/local/tmp/x86_64/python-android-x86_64 && mkdir -p /data/local/tmp/x86_64/python-android-x86_64'
-docker cp ./output/runtime/minimal/. android-15:/data/local/tmp/x86_64/python-android-x86_64
+docker exec android-15 sh -lc 'tar -xzf /data/local/tmp/python-android-x86_64-minimal.tar.gz -C /data/local/tmp/x86_64/python-android-x86_64'
 docker exec android-15 sh -lc "cat > /system/bin/python3 <<'EOF'
 #!/system/bin/sh
 exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 \"\$@\"
 EOF
 chmod 0755 /system/bin/python3"
+docker exec android-15 sh -lc "cat > /system/bin/python <<'EOF'
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 \"\$@\"
+EOF
+chmod 0755 /system/bin/python"
+docker exec android-15 sh -lc "cat > /system/bin/pip <<'EOF'
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip \"\$@\"
+EOF
+chmod 0755 /system/bin/pip"
 ```
 
 After deployment:
@@ -266,26 +375,29 @@ After deployment:
 ```bash
 docker exec android-15 sh -lc 'python3 --version'
 docker exec android-15 sh -lc 'python -c "import sys; print(sys.version)"'
+docker exec android-15 sh -lc 'python3 -c "import numpy, pandas, uiautomator2; from PIL import Image; from lxml import etree; print(numpy.__version__, pandas.__version__, Image.__version__)"'
 docker exec android-15 sh -lc 'pip --version'
 ```
 
 ## Use the prebuilt runtime with ADB
 
-For a physical device, emulator, or Android VM reachable through `adb`, use the generated runtime directory or one of the tarballs from `output/dist/`.
+For a physical device, emulator, or Android VM reachable through `adb`, use one of the tarballs from `output/dist/`.
 
-Example with the unpacked `minimal` runtime:
+Example with the `x86_64` `minimal` runtime under `/data/local/tmp`:
 
 ```bash
-adb shell 'rm -rf /data/local/tmp/python3 && mkdir -p /data/local/tmp/python3'
-adb push output/runtime/minimal/. /data/local/tmp/python3/
-adb shell 'cat > /data/local/tmp/python3-activate <<'\''EOF'\''
+adb push output/dist/python-android-x86_64-minimal.tar.gz /data/local/tmp/python-android-x86_64-minimal.tar.gz
+adb shell 'rm -rf /data/local/tmp/x86_64/python-android-x86_64 && mkdir -p /data/local/tmp/x86_64/python-android-x86_64'
+adb shell 'tar -xzf /data/local/tmp/python-android-x86_64-minimal.tar.gz -C /data/local/tmp/x86_64/python-android-x86_64'
+adb shell 'cat > /data/local/tmp/python3 <<'\''EOF'\''
 #!/system/bin/sh
-export PY_RUNTIME=/data/local/tmp/python3
+export PY_RUNTIME=/data/local/tmp/x86_64/python-android-x86_64
 exec "$PY_RUNTIME/bin/python3" "$@"
 EOF
-chmod 0755 /data/local/tmp/python3-activate'
-adb shell '/data/local/tmp/python3-activate --version'
-adb shell '/data/local/tmp/python3-activate -c "import json, sqlite3, ssl; print(\"ok\")"'
+chmod 0755 /data/local/tmp/python3'
+adb shell '/data/local/tmp/python3 --version'
+adb shell '/data/local/tmp/python3 -c "import json, sqlite3, ssl; print(\"ok\")"'
+adb shell '/data/local/tmp/python3 -c "import numpy, pandas, uiautomator2; from PIL import Image; from lxml import etree; print(numpy.__version__, pandas.__version__, Image.__version__)"'
 ```
 
 If you have root or a writable system partition, you can also install the wrappers into `/system/bin`:
@@ -293,21 +405,30 @@ If you have root or a writable system partition, you can also install the wrappe
 ```bash
 adb root
 adb remount
-adb push output/runtime/minimal/. /system/opt/python3/
 adb shell 'cat > /system/bin/python3 <<'\''EOF'\''
 #!/system/bin/sh
-exec /system/opt/python3/bin/python3 "$@"
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 "$@"
 EOF
 chmod 0755 /system/bin/python3
-ln -sf /system/bin/python3 /system/bin/python'
+cat > /system/bin/python <<'\''EOF'\''
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 "$@"
+EOF
+chmod 0755 /system/bin/python
+cat > /system/bin/pip <<'\''EOF'\''
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip "$@"
+EOF
+chmod 0755 /system/bin/pip'
 adb shell 'python3 --version'
 ```
 
 For `pip` after an ADB deploy:
 
 ```bash
-adb shell '/data/local/tmp/python3/bin/python3 -m ensurepip --upgrade'
-adb shell '/data/local/tmp/python3/bin/python3 -m pip --version'
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m ensurepip --default-pip'
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip --version'
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip install urllib3'
 ```
 
 ## Where users download prebuilt binaries
@@ -360,7 +481,7 @@ The test suite covers:
 - `sys.path`
 - execution of an external `.py` script
 - sockets and real TLS/HTTPS checks
-- `faker`, `requests`, and `jinja2`
+- `faker`, `requests`, `jinja2`, `numpy`, `pandas`, `Pillow`, `lxml`, and `uiautomator2`
 - `/system/bin/python3` and `/system/bin/python`
 
 ## Enable and use pip on the target

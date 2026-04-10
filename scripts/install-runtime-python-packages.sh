@@ -28,7 +28,7 @@ python3 -m venv "${TOOLS_VENV}"
 mkdir -p "${SITE_PACKAGES_DIR}"
 find "${SITE_PACKAGES_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 
-log "Installing bundled Python packages into staging: ${BUNDLED_PYTHON_PACKAGES}"
+log "Installing bundled pure Python packages into staging: ${BUNDLED_PYTHON_PACKAGES}"
 MARKUPSAFE_NO_SPEEDUPS=1 \
 PIP_NO_COMPILE=1 \
 PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -51,4 +51,4 @@ for dist in sorted(distributions(path=[site_packages]), key=lambda d: d.metadata
     print(f"{dist.metadata['Name']}=={dist.version}")
 EOF
 
-log "Bundled Python packages installed into ${SITE_PACKAGES_DIR}"
+log "Bundled pure Python packages installed into ${SITE_PACKAGES_DIR}"

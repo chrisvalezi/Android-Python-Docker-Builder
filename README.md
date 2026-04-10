@@ -21,6 +21,11 @@ Pacotes adicionais já embutidos no runtime:
 - `faker`
 - `requests`
 - `jinja2`
+- `numpy`
+- `pandas`
+- `Pillow`
+- `lxml`
+- `uiautomator2`
 
 ## Decisões técnicas
 
@@ -118,12 +123,20 @@ make compose-up
 make build
 ```
 
+O build completo também compila as wheels Android nativas de `numpy`, `pandas`, `Pillow`, `lxml` e `uiautomator2` antes de instalar os pacotes no runtime.
+
 ## Como compilar para outra ABI
 
-Exemplo:
+Exemplo para `arm64-v8a`:
 
 ```bash
 docker compose exec builder bash -lc "ANDROID_ABI=arm64-v8a ./scripts/build-all.sh"
+```
+
+Atalho equivalente:
+
+```bash
+ANDROID_ABI=arm64-v8a make build
 ```
 
 Build serial para várias ABIs:
@@ -139,10 +152,18 @@ Depois do build, você terá algo como:
 - `output/dist/python-android-x86_64-full.tar.gz`
 - `output/dist/python-android-x86_64-minimal.tar.gz`
 - `output/dist/python-android-x86_64-slim.tar.gz`
+- `output/dist/python-android-arm64-v8a-full.tar.gz`
+- `output/dist/python-android-arm64-v8a-minimal.tar.gz`
+- `output/dist/python-android-arm64-v8a-slim.tar.gz`
 - `output/dist/SHA256SUMS`
 - `output/dist/ARTIFACTS.txt`
 
 Observação: o projeto usa `output/` como diretório oficial de saída. Não existe uma pasta `out/` neste repositório.
+
+As wheels nativas de `numpy`, `pandas`, `Pillow`, `lxml` e `uiautomator2` ficam em:
+
+- `output/wheelhouse/x86_64/`
+- `output/wheelhouse/arm64-v8a/`
 
 ## Variantes
 
@@ -178,11 +199,103 @@ Atalho com `make`:
 make redroid-push
 ```
 
+Para instalar no Redroid `x86_64`:
+
+```bash
+REDROID_CONTAINER=android-15 ANDROID_ABI=x86_64 ./scripts/redroid-push.sh
+```
+
+Para instalar no Redroid `arm64-v8a`:
+
+```bash
+REDROID_CONTAINER=android-15 ANDROID_ABI=arm64-v8a ./scripts/redroid-push.sh
+```
+
+O deploy usa o tarball correto de `output/dist/python-android-<abi>-<variant>.tar.gz`, então ele não depende do último ABI empacotado em `output/runtime/`.
+
+Depois do deploy:
+
+```bash
+docker exec android-15 sh -lc 'python3 --version'
+docker exec android-15 sh -lc 'python -c "import sys; print(sys.version)"'
+docker exec android-15 sh -lc 'python3 -c "import numpy, pandas, uiautomator2; from PIL import Image; from lxml import etree; print(numpy.__version__, pandas.__version__, Image.__version__)"'
+```
+
+Habilitar e testar `pip` no Redroid:
+
+```bash
+REDROID_CONTAINER=android-15 ./scripts/redroid-enable-pip.sh
+docker exec android-15 sh -lc 'pip --version'
+docker exec android-15 sh -lc 'pip install urllib3'
+```
+
+Observação para `arm64-v8a`: o container Android precisa executar binários ARM64 nativos. Alguns Redroid `x86_64` anunciam `arm64-v8a` em `ro.product.cpu.abilist`, mas não executam ELF ARM64 standalone no shell.
+
 ### Instalação manual equivalente
 
 ```bash
+mkdir -p /tmp/python-android-x86_64
+tar -xzf output/dist/python-android-x86_64-minimal.tar.gz -C /tmp/python-android-x86_64
 docker exec android-15 sh -lc 'rm -rf /data/local/tmp/x86_64/python-android-x86_64 && mkdir -p /data/local/tmp/x86_64/python-android-x86_64'
-docker cp ./output/runtime/minimal/. android-15:/data/local/tmp/x86_64/python-android-x86_64
+docker cp /tmp/python-android-x86_64/. android-15:/data/local/tmp/x86_64/python-android-x86_64
+docker exec android-15 sh -lc "cat > /system/bin/python3 <<'EOF'
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 \"\$@\"
+EOF
+chmod 0755 /system/bin/python3
+ln -sf /system/bin/python3 /system/bin/python
+cat > /system/bin/pip <<'EOF'
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip \"\$@\"
+EOF
+chmod 0755 /system/bin/pip"
+```
+
+### Instalação com ADB
+
+Exemplo para `x86_64`:
+
+```bash
+rm -rf /tmp/python-android-x86_64
+mkdir -p /tmp/python-android-x86_64
+tar -xzf output/dist/python-android-x86_64-minimal.tar.gz -C /tmp/python-android-x86_64
+adb shell 'rm -rf /data/local/tmp/x86_64/python-android-x86_64 && mkdir -p /data/local/tmp/x86_64/python-android-x86_64'
+adb push /tmp/python-android-x86_64/. /data/local/tmp/x86_64/python-android-x86_64/
+adb shell 'cat > /data/local/tmp/python3 <<'\''EOF'\''
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 "$@"
+EOF
+chmod 0755 /data/local/tmp/python3
+ln -sf /data/local/tmp/python3 /data/local/tmp/python'
+adb shell '/data/local/tmp/python3 --version'
+adb shell '/data/local/tmp/python3 -c "import numpy, pandas, uiautomator2; from PIL import Image; from lxml import etree; print(numpy.__version__, pandas.__version__, Image.__version__)"'
+```
+
+Se o dispositivo tiver root/remount e você quiser wrappers globais:
+
+```bash
+adb root
+adb remount
+adb shell 'cat > /system/bin/python3 <<'\''EOF'\''
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 "$@"
+EOF
+chmod 0755 /system/bin/python3
+ln -sf /system/bin/python3 /system/bin/python
+cat > /system/bin/pip <<'\''EOF'\''
+#!/system/bin/sh
+exec /data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip "$@"
+EOF
+chmod 0755 /system/bin/pip'
+adb shell 'python3 --version'
+```
+
+Habilitar `pip` via ADB:
+
+```bash
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m ensurepip --default-pip'
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip --version'
+adb shell '/data/local/tmp/x86_64/python-android-x86_64/bin/python3 -m pip install urllib3'
 ```
 
 ## Como testar no Android
@@ -210,7 +323,7 @@ O teste valida:
 - socket + TLS real
 - `HTTPS GET` real
 - wrappers em `/system/bin/python3` e `/system/bin/python`
-- imports de `faker`, `requests` e `jinja2`
+- imports de `faker`, `requests`, `jinja2`, `numpy`, `pandas`, `Pillow`, `lxml` e `uiautomator2`
 
 ## Como usar pip no Android
 
@@ -239,6 +352,11 @@ Além da stdlib principal, o build agora inclui:
 - `faker`
 - `requests`
 - `jinja2`
+- `numpy`
+- `pandas`
+- `Pillow`
+- `lxml`
+- `uiautomator2`
 
 Dependências puras instaladas junto:
 
@@ -247,6 +365,60 @@ Dependências puras instaladas junto:
 - `idna`
 - `charset-normalizer`
 - `MarkupSafe`
+- `python-dateutil`
+- `pytz`
+- `tzdata`
+
+### Pacotes nativos: numpy, pandas, Pillow, lxml e uiautomator2
+
+`numpy`, `pandas`, `Pillow` e `lxml` têm extensões nativas. `uiautomator2` é puro, mas depende de wheels Android nativas como `Pillow` e `lxml`, então também é instalado pelo fluxo de pacotes nativos.
+
+O fluxo padrão agora compila essas wheels dentro do builder com `crossenv`, Meson e o Android NDK:
+
+```bash
+make native-wheels
+make native-packages
+make package
+make export
+```
+
+No build completo, essa sequência já é chamada por:
+
+```bash
+make build
+```
+
+As wheels geradas ficam em:
+
+```text
+output/wheelhouse/<abi>/
+```
+
+Exemplo para `x86_64`:
+
+```text
+output/wheelhouse/x86_64/numpy-...-cp312-cp312-android_24_x86_64.whl
+output/wheelhouse/x86_64/pandas-...-cp312-cp312-android_24_x86_64.whl
+```
+
+Exemplo para `arm64-v8a`:
+
+```text
+output/wheelhouse/arm64-v8a/numpy-...-cp312-cp312-android_24_arm64_v8a.whl
+output/wheelhouse/arm64-v8a/pandas-...-cp312-cp312-android_24_arm64_v8a.whl
+```
+
+Também é possível sobrescrever:
+
+- `ANDROID_WHEELHOUSE_DIR`: diretório das wheels nativas.
+- `ANDROID_WHEEL_PLATFORM_TAG`: tag de plataforma usada pelo `pip`, por exemplo `android_24_x86_64`.
+- `NUMPY_VERSION`: versão pinada do `numpy`.
+- `PANDAS_VERSION`: versão pinada do `pandas`.
+- `PILLOW_VERSION`: versão pinada do `Pillow`.
+- `LXML_VERSION`: versão pinada do `lxml`.
+- `UIAUTOMATOR2_VERSION`: versão pinada do `uiautomator2`.
+
+Se quiser usar wheels próprias em vez de compilar, coloque-as em `output/wheelhouse/<abi>/` antes de rodar `make native-packages`.
 
 O staging gera também:
 

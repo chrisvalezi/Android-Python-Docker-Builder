@@ -29,10 +29,12 @@ PY_LIB_DIR="\${LIB_DIR}/python${PY_MAJMIN}"
 
 export PYTHONHOME="\${ROOT_DIR}"
 export PYTHONPATH="\${LIB_DIR}/python${PY_MAJMIN}.zip:\${PY_LIB_DIR}:\${PY_LIB_DIR}/lib-dynload"
-export LD_LIBRARY_PATH="\${LIB_DIR}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
-export LD_PRELOAD="\${LIB_DIR}/libpython${PY_MAJMIN}.so\${LD_PRELOAD:+:\${LD_PRELOAD}}"
 export TMPDIR="\${TMPDIR:-/data/local/tmp}"
-export HOME="\${HOME:-/data/local/tmp}"
+if [ -z "\${HOME:-}" ] || [ "\${HOME}" = "/" ]; then
+  export HOME="/data/local/tmp"
+else
+  export HOME
+fi
 export LANG="\${LANG:-C.UTF-8}"
 export LC_ALL="\${LC_ALL:-C.UTF-8}"
 export SSL_CERT_FILE="\${ROOT_DIR}/etc/ssl/cert.pem"
@@ -52,14 +54,54 @@ EOF
   chmod 0755 "${runtime_root}/bin/python"
 }
 
+function patch_elf_runpaths() {
+  local runtime_root="$1"
+  local elf
+  local elf_dir
+  local rel_lib
+  local libpython="libpython${PY_MAJMIN}.so.1.0"
+
+  if ! command -v patchelf >/dev/null 2>&1; then
+    printf 'patchelf is required to package runtime ELF RUNPATH entries.\n' >&2
+    exit 1
+  fi
+
+  while IFS= read -r -d '' elf; do
+    if ! file "${elf}" | grep -q 'ELF '; then
+      continue
+    fi
+
+    elf_dir="$(dirname "${elf}")"
+    rel_lib="$(realpath --relative-to="${elf_dir}" "${runtime_root}/lib")"
+    if [[ "${rel_lib}" == "." ]]; then
+      patchelf --set-rpath '$ORIGIN' "${elf}"
+    else
+      patchelf --set-rpath "\$ORIGIN/${rel_lib}" "${elf}"
+    fi
+
+    if [[ "${elf}" == *.so && "$(basename "${elf}")" != "${libpython}" ]]; then
+      if ! readelf -d "${elf}" | grep -Fq "Shared library: [${libpython}]"; then
+        patchelf --add-needed "${libpython}" "${elf}"
+      fi
+    fi
+  done < <(find "${runtime_root}" -type f \( -name '*.bin' -o -name '*.so' \) -print0)
+}
+
 function copy_base_runtime() {
   local variant_root="$1"
+  local ndk_libcxx="${NDK_DIR}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$(android_ndk_lib_arch)/libc++_shared.so"
+
   rsync -a "${STAGED_RUNTIME}/" "${variant_root}/"
+
+  if [[ -f "${ndk_libcxx}" ]]; then
+    install -Dm755 "${ndk_libcxx}" "${variant_root}/lib/libc++_shared.so"
+  fi
 
   if [[ -x "${variant_root}/bin/python3.bin" && ! -e "${variant_root}/bin/python${PY_MAJMIN}.bin" ]]; then
     cp "${variant_root}/bin/python3.bin" "${variant_root}/bin/python${PY_MAJMIN}.bin"
   fi
 
+  patch_elf_runpaths "${variant_root}"
   install_launcher "${variant_root}"
   mkdir -p "${variant_root}/tests"
   cp "${ROOT_DIR}/tests/"*.py "${variant_root}/tests/"
@@ -143,6 +185,7 @@ zip -q -r "${MIN_ZIP}" . \
   -x 'lib-dynload/*' \
   -x 'site-packages/*'
 popd >/dev/null
+ln -sf "$(basename "${MIN_ZIP}")" "${RUNTIME_DIR}/minimal/lib/python${PY_MAJMIN/./}.zip"
 
 find "${MIN_STDLIB}" -mindepth 1 -maxdepth 1 \
   ! -name 'lib-dynload' \
@@ -156,6 +199,7 @@ zip -q -r "${SLIM_ZIP}" . \
   -x 'lib-dynload/*' \
   -x 'site-packages/*'
 popd >/dev/null
+ln -sf "$(basename "${SLIM_ZIP}")" "${RUNTIME_DIR}/slim/lib/python${PY_MAJMIN/./}.zip"
 
 find "${SLIM_STDLIB}" -mindepth 1 -maxdepth 1 \
   ! -name 'lib-dynload' \

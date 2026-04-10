@@ -9,6 +9,12 @@ setup_android_env
 
 mkdir -p "${PREFIX_DIR}/lib/pkgconfig"
 
+function remove_android_unsupported_libs() {
+  find "${PREFIX_DIR}/bin" "${PREFIX_DIR}/lib" -type f \
+    \( -name '*-config' -o -name '*.pc' -o -name '*.la' -o -name '*.sh' \) \
+    -exec sed -i 's/[[:space:]]-lrt\([[:space:]]\\|$\)/ /g' {} +
+}
+
 function build_zlib() {
   if [[ -f "${PREFIX_DIR}/lib/libz.a" ]]; then
     log "zlib already built"
@@ -89,6 +95,7 @@ function build_xz() {
     --disable-doc
   make -j"${JOBS}"
   make install
+  remove_android_unsupported_libs
   popd >/dev/null
 }
 
@@ -108,6 +115,7 @@ function build_libffi() {
     --with-pic
   make -j"${JOBS}"
   make install
+  remove_android_unsupported_libs
   popd >/dev/null
 }
 
@@ -129,6 +137,7 @@ function build_sqlite() {
     --disable-load-extension
   make -j"${JOBS}"
   make install
+  remove_android_unsupported_libs
   popd >/dev/null
 }
 
@@ -143,7 +152,7 @@ function build_openssl() {
   export ANDROID_NDK_ROOT="${NDK_DIR}"
   export PATH="${TOOLCHAIN}/bin:${PATH}"
   ./Configure \
-    android-x86_64 \
+    "$(android_openssl_target)" \
     no-tests \
     no-shared \
     no-module \
@@ -155,6 +164,51 @@ function build_openssl() {
   popd >/dev/null
 }
 
+function build_libxml2() {
+  if [[ -f "${PREFIX_DIR}/lib/libxml2.a" ]]; then
+    log "libxml2 already built"
+    return
+  fi
+
+  pushd "${LIBXML2_SRC_DIR}" >/dev/null
+  make distclean >/dev/null 2>&1 || true
+  ./configure \
+    --host="${ANDROID_TRIPLE}" \
+    --prefix="${PREFIX_DIR}" \
+    --disable-shared \
+    --enable-static \
+    --without-python \
+    --without-iconv \
+    --without-lzma \
+    --with-zlib="${PREFIX_DIR}"
+  make -j"${JOBS}"
+  make install
+  remove_android_unsupported_libs
+  popd >/dev/null
+}
+
+function build_libxslt() {
+  if [[ -f "${PREFIX_DIR}/lib/libxslt.a" ]]; then
+    log "libxslt already built"
+    return
+  fi
+
+  pushd "${LIBXSLT_SRC_DIR}" >/dev/null
+  make distclean >/dev/null 2>&1 || true
+  ./configure \
+    --host="${ANDROID_TRIPLE}" \
+    --prefix="${PREFIX_DIR}" \
+    --disable-shared \
+    --enable-static \
+    --without-python \
+    --without-crypto \
+    --with-libxml-prefix="${PREFIX_DIR}"
+  make -j"${JOBS}"
+  make install
+  remove_android_unsupported_libs
+  popd >/dev/null
+}
+
 log "Building Android third-party dependencies for ${ANDROID_ABI}"
 build_zlib
 build_bzip2
@@ -162,4 +216,6 @@ build_xz
 build_libffi
 build_sqlite
 build_openssl
+build_libxml2
+build_libxslt
 log "All dependencies finished"

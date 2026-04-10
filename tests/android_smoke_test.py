@@ -14,7 +14,7 @@ import time
 from base64 import b64encode
 from collections import Counter, defaultdict
 from csv import DictReader
-from datetime import datetime
+from datetime import UTC, datetime
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler
 from itertools import islice
@@ -22,8 +22,13 @@ from random import Random
 from urllib.request import Request
 
 import jinja2
+import numpy
+import pandas
 import requests
+import uiautomator2
 from faker import Faker
+from lxml import etree
+from PIL import Image
 
 print("hello from android")
 print("python:", sys.version)
@@ -58,12 +63,12 @@ print("secrets:", len(secrets.token_hex(8)))
 print("regex:", bool(re.search(r"android", "hello android shell")))
 print("base64:", b64encode(b"android").decode("ascii"))
 print("hashlib:", sha256(b"android").hexdigest()[:16])
-print("datetime:", datetime.utcnow().strftime("%Y-%m-%d"))
+print("datetime:", datetime.now(UTC).strftime("%Y-%m-%d"))
 print("time:", int(time.time()) > 0)
 print("collections:", Counter("android")["a"], defaultdict(int)["missing"])
 print("itertools:", list(islice(range(10), 3)))
 print("csv:", list(DictReader(["name,value", "android,1"]))[0]["name"])
-print("urllib.request:", Request("https://example.com").method)
+print("urllib.request:", Request("https://example.com").get_method())
 print("http.server:", BaseHTTPRequestHandler.server_version)
 print(
     "subprocess:",
@@ -81,6 +86,11 @@ resp = requests.models.Response()
 resp.status_code = 204
 print("faker:", fake.name())
 print("jinja2:", rendered)
+print("numpy:", numpy.__version__, numpy.array([1, 2, 3]).sum())
+print("pandas:", pandas.__version__, pandas.DataFrame({"value": [1, 2, 3]})["value"].sum())
+print("pillow:", Image.__version__, Image.new("RGB", (2, 2), "red").size)
+print("lxml:", etree.fromstring(b"<root><node text='ok' /></root>").xpath("string(/root/node/@text)"))
+print("uiautomator2:", getattr(uiautomator2, "__version__", "import-ok"))
 print("requests:", resp.status_code)
 
 print("cwd:", os.getcwd())

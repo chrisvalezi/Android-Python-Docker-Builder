@@ -11,7 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     file \
     git \
+    libbz2-dev \
+    libffi-dev \
+    liblzma-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    libssl-dev \
     make \
+    patchelf \
     perl \
     pkg-config \
     python3 \
@@ -21,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     wget \
     xz-utils \
+    zlib1g-dev \
     zip \
     zstd \
  && rm -rf /var/lib/apt/lists/*
